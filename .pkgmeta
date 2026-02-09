@@ -4,3 +4,4 @@ ignore:
   - .gitignore
   - .pkgmeta
   - RELEASE.md
+  - "*.png"
