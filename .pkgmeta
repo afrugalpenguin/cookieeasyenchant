@@ -1,7 +1,6 @@
 package-as: CookieEasyEnchant
 
 ignore:
-  - .github
   - .gitignore
-  - RELEASE.md
   - .pkgmeta
+  - RELEASE.md
