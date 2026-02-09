@@ -20,7 +20,7 @@ jobs:
           # Create fresh directory with correct case
           rm -rf CookieEasyEnchant
           mkdir CookieEasyEnchant
-          cp CookieEasyEnchant.toc CookieEasyEnchant.lua CookieEasyEnchant/
+          cp CookieEasyEnchant.toc CookieEasyEnchant_TBC.toc CookieEasyEnchant.lua CookieEasyEnchant/
           # Replace version placeholder with tag
           sed -i "s/@project-version@/${{ github.ref_name }}/g" CookieEasyEnchant/CookieEasyEnchant.toc
           zip -r "CookieEasyEnchant-${{ github.ref_name }}.zip" CookieEasyEnchant/
