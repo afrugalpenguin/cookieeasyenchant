@@ -45,6 +45,156 @@ local DISENCHANTABLE_SLOTS = {
     INVTYPE_THROWN = true, INVTYPE_RELIC = true,
 }
 
+-- Weapon equip locations (for disenchant result probabilities)
+local WEAPON_SLOTS = {
+    INVTYPE_WEAPON = true, INVTYPE_2HWEAPON = true,
+    INVTYPE_WEAPONMAINHAND = true, INVTYPE_WEAPONOFFHAND = true,
+    INVTYPE_RANGED = true, INVTYPE_RANGEDRIGHT = true,
+    INVTYPE_THROWN = true,
+}
+
+--------------------------------------------------------------------------------
+-- Disenchant Results Data (TBC, iLvl 1-120)
+--------------------------------------------------------------------------------
+
+local function GetDisenchantResults(quality, itemLevel, isWeapon)
+    local results = {}
+
+    if quality == QUALITY_UNCOMMON then
+        -- Determine material tier by item level
+        local dust, essence, shard
+        if itemLevel <= 20 then
+            dust = "Strange Dust"
+            essence = (isWeapon and "Lesser Magic Essence") or "Lesser Magic Essence"
+            if itemLevel <= 15 then
+                essence = "Lesser Magic Essence"
+            else
+                essence = "Greater Magic Essence"
+            end
+        elseif itemLevel <= 25 then
+            dust = "Strange Dust"
+            essence = "Lesser Astral Essence"
+        elseif itemLevel <= 30 then
+            dust = "Soul Dust"
+            essence = "Greater Astral Essence"
+        elseif itemLevel <= 35 then
+            dust = "Soul Dust"
+            essence = "Lesser Mystic Essence"
+        elseif itemLevel <= 40 then
+            dust = "Vision Dust"
+            essence = "Greater Mystic Essence"
+        elseif itemLevel <= 45 then
+            dust = "Vision Dust"
+            essence = "Lesser Nether Essence"
+        elseif itemLevel <= 50 then
+            dust = "Dream Dust"
+            essence = "Greater Nether Essence"
+        elseif itemLevel <= 55 then
+            dust = "Dream Dust"
+            essence = "Lesser Eternal Essence"
+        elseif itemLevel <= 60 then
+            dust = "Illusion Dust"
+            essence = "Greater Eternal Essence"
+        elseif itemLevel <= 70 then
+            dust = "Illusion Dust"
+            essence = "Greater Eternal Essence"
+        elseif itemLevel <= 99 then
+            dust = "Arcane Dust"
+            essence = "Lesser Planar Essence"
+        else
+            dust = "Arcane Dust"
+            essence = "Greater Planar Essence"
+        end
+
+        -- Shard tier
+        if itemLevel <= 25 then
+            shard = "Small Glimmering Shard"
+        elseif itemLevel <= 30 then
+            shard = "Large Glimmering Shard"
+        elseif itemLevel <= 35 then
+            shard = "Small Glowing Shard"
+        elseif itemLevel <= 40 then
+            shard = "Large Glowing Shard"
+        elseif itemLevel <= 45 then
+            shard = "Small Radiant Shard"
+        elseif itemLevel <= 50 then
+            shard = "Large Radiant Shard"
+        elseif itemLevel <= 55 then
+            shard = "Small Brilliant Shard"
+        elseif itemLevel <= 60 then
+            shard = "Large Brilliant Shard"
+        elseif itemLevel <= 70 then
+            shard = "Large Brilliant Shard"
+        else
+            shard = "Small Prismatic Shard"
+        end
+
+        -- Dust quantities by tier
+        local dustMin, dustMax = 1, 3
+        if itemLevel > 50 then dustMin, dustMax = 2, 5
+        elseif itemLevel > 30 then dustMin, dustMax = 1, 4 end
+
+        if isWeapon then
+            -- Weapons: essence 75%, dust 20%, shard 5%
+            table.insert(results, {material = essence, qtyMin = 1, qtyMax = 2, chance = 75})
+            table.insert(results, {material = dust, qtyMin = dustMin, qtyMax = dustMax, chance = 20})
+            table.insert(results, {material = shard, qtyMin = 1, qtyMax = 1, chance = 5})
+        else
+            -- Armor: dust 75%, essence 20%, shard 5%
+            table.insert(results, {material = dust, qtyMin = dustMin, qtyMax = dustMax, chance = 75})
+            table.insert(results, {material = essence, qtyMin = 1, qtyMax = 2, chance = 20})
+            table.insert(results, {material = shard, qtyMin = 1, qtyMax = 1, chance = 5})
+        end
+
+    elseif quality == QUALITY_RARE then
+        local shard
+        if itemLevel <= 25 then
+            shard = "Small Glimmering Shard"
+        elseif itemLevel <= 30 then
+            shard = "Large Glimmering Shard"
+        elseif itemLevel <= 35 then
+            shard = "Small Glowing Shard"
+        elseif itemLevel <= 40 then
+            shard = "Large Glowing Shard"
+        elseif itemLevel <= 45 then
+            shard = "Small Radiant Shard"
+        elseif itemLevel <= 50 then
+            shard = "Large Radiant Shard"
+        elseif itemLevel <= 55 then
+            shard = "Small Brilliant Shard"
+        elseif itemLevel <= 65 then
+            shard = "Large Brilliant Shard"
+        elseif itemLevel <= 99 then
+            shard = "Small Prismatic Shard"
+        else
+            shard = "Large Prismatic Shard"
+        end
+
+        if itemLevel >= 56 and itemLevel <= 65 then
+            table.insert(results, {material = shard, qtyMin = 1, qtyMax = 1, chance = 99.5})
+            table.insert(results, {material = "Nexus Crystal", qtyMin = 1, qtyMax = 1, chance = 0.5})
+        elseif itemLevel > 65 then
+            table.insert(results, {material = shard, qtyMin = 1, qtyMax = 1, chance = 99.5})
+            table.insert(results, {material = "Void Crystal", qtyMin = 1, qtyMax = 1, chance = 0.5})
+        else
+            table.insert(results, {material = shard, qtyMin = 1, qtyMax = 1, chance = 100})
+        end
+
+    elseif quality == QUALITY_EPIC then
+        local crystal
+        if itemLevel <= 65 then
+            crystal = "Nexus Crystal"
+        elseif itemLevel <= 99 then
+            crystal = "Void Crystal"
+        else
+            crystal = "Void Crystal"
+        end
+        table.insert(results, {material = crystal, qtyMin = 1, qtyMax = 2, chance = 100})
+    end
+
+    return results
+end
+
 local function QualityPassesFilter(quality)
     if quality == QUALITY_UNCOMMON then return CookieEasyEnchantDB.deFilterUncommon end
     if quality == QUALITY_RARE then return CookieEasyEnchantDB.deFilterRare end
@@ -125,6 +275,7 @@ ScanBags = function()
                             quality = quality,
                             itemLevel = itemLevel or 0,
                             isBoE = isBoE,
+                            isWeapon = WEAPON_SLOTS[itemEquipLoc] or false,
                         })
                     end
                 end
@@ -397,11 +548,27 @@ CreateDisenchantFrame = function()
             end
         end)
 
-        -- Tooltip on hover
+        -- Tooltip on hover (with disenchant results)
         row:SetScript("OnEnter", function(self)
             if self.itemLink then
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetHyperlink(self.itemLink)
+                if self.entry then
+                    local results = GetDisenchantResults(self.entry.quality, self.entry.itemLevel, self.entry.isWeapon)
+                    if #results > 0 then
+                        GameTooltip:AddLine(" ")
+                        GameTooltip:AddLine("Disenchants into:")
+                        for _, r in ipairs(results) do
+                            local qty
+                            if r.qtyMin == r.qtyMax then
+                                qty = "x" .. r.qtyMin
+                            else
+                                qty = "x" .. r.qtyMin .. "-" .. r.qtyMax
+                            end
+                            GameTooltip:AddLine("  " .. r.material .. " " .. qty .. " (" .. r.chance .. "%)", 0.8, 0.8, 0.8)
+                        end
+                    end
+                end
                 GameTooltip:Show()
             end
         end)
