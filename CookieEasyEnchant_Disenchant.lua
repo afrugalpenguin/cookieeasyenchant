@@ -313,14 +313,14 @@ end
 
 local function BuildDisplayList()
     local display = {}
-    local hasBoP, hasBoE = false, false
+    local bopCount, boeCount = 0, 0
 
     for _, item in ipairs(scannedItems) do
-        if item.isBoE then hasBoE = true else hasBoP = true end
+        if item.isBoE then boeCount = boeCount + 1 else bopCount = bopCount + 1 end
     end
 
-    if hasBoP then
-        table.insert(display, { isHeader = true, headerText = "Bind on Pickup" })
+    if bopCount > 0 then
+        table.insert(display, { isHeader = true, headerText = "Bind on Pickup (" .. bopCount .. ")" })
         for _, item in ipairs(scannedItems) do
             if not item.isBoE then
                 table.insert(display, item)
@@ -328,8 +328,8 @@ local function BuildDisplayList()
         end
     end
 
-    if hasBoE then
-        table.insert(display, { isHeader = true, headerText = "Bind on Equip" })
+    if boeCount > 0 then
+        table.insert(display, { isHeader = true, headerText = "Bind on Equip (" .. boeCount .. ")" })
         for _, item in ipairs(scannedItems) do
             if item.isBoE then
                 table.insert(display, item)
@@ -356,22 +356,31 @@ RefreshList = function()
 
         if entry and entry.isHeader then
             row.icon:Hide()
+            row.iconBorder:Hide()
             row.text:Hide()
             row.ilvl:Hide()
             row.dismissBtn:Hide()
             row.highlight:Hide()
+            row.stripe:Hide()
             row.headerText:SetText(entry.headerText)
             row.headerText:Show()
+            row.headerLine:Show()
             row.itemLink = nil
             row.entry = nil
             row:Show()
 
         elseif entry then
             row.headerText:Hide()
+            row.headerLine:Hide()
             row.icon:SetTexture(entry.icon)
             row.icon:Show()
 
             local qualityColor = ITEM_QUALITY_COLORS[entry.quality] or ITEM_QUALITY_COLORS[1]
+            for _, edge in ipairs(row.iconBorder.edges) do
+                edge:SetColorTexture(qualityColor.r, qualityColor.g, qualityColor.b, 1)
+            end
+            row.iconBorder:Show()
+
             row.text:SetText(entry.name)
             row.text:SetTextColor(qualityColor.r, qualityColor.g, qualityColor.b)
             row.text:Show()
@@ -382,10 +391,20 @@ RefreshList = function()
             row.itemLink = entry.link
             row.entry = entry
 
+            -- Alternating row shading
+            if idx % 2 == 0 then
+                row.stripe:SetColorTexture(1, 1, 1, 0.04)
+                row.stripe:Show()
+            else
+                row.stripe:Hide()
+            end
+
             -- Show selection highlight
             if selectedDE and selectedDE.bag == entry.bag and selectedDE.slot == entry.slot then
+                row.highlight:SetColorTexture(0.9, 0.8, 0.2, 0.2)
                 row.highlight:Show()
             else
+                row.highlight:SetColorTexture(1, 1, 1, 0.15)
                 row.highlight:Hide()
             end
 
@@ -400,14 +419,6 @@ RefreshList = function()
                 ScanBags()
                 RefreshList()
             end)
-            row.dismissBtn:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText("Dismiss")
-                GameTooltip:AddLine("Click: hide for this session", 1, 1, 1)
-                GameTooltip:AddLine("Shift+Click: permanently ignore", 1, 0.5, 0.5)
-                GameTooltip:Show()
-            end)
-            row.dismissBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
             row.dismissBtn:Show()
 
             row:Show()
@@ -503,6 +514,11 @@ CreateDisenchantFrame = function()
         row:SetPoint("TOPLEFT", 12, listTop - 2 + (i - 1) * -36)
         row:SetFrameLevel(rowLevel)
 
+        -- Alternating row stripe
+        row.stripe = row:CreateTexture(nil, "BACKGROUND", nil, -1)
+        row.stripe:SetAllPoints()
+        row.stripe:Hide()
+
         -- Selection highlight
         row.highlight = row:CreateTexture(nil, "BACKGROUND")
         row.highlight:SetAllPoints()
@@ -511,31 +527,77 @@ CreateDisenchantFrame = function()
 
         -- Item icon
         row.icon = row:CreateTexture(nil, "ARTWORK")
-        row.icon:SetSize(32, 32)
-        row.icon:SetPoint("LEFT", 0, 0)
+        row.icon:SetSize(28, 28)
+        row.icon:SetPoint("LEFT", 2, 0)
+        row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- Trim default icon border
+
+        -- Quality-colored icon border (4 edge textures for TBC compatibility)
+        row.iconBorder = CreateFrame("Frame", nil, row)
+        row.iconBorder:SetPoint("TOPLEFT", row.icon, "TOPLEFT", -1, 1)
+        row.iconBorder:SetPoint("BOTTOMRIGHT", row.icon, "BOTTOMRIGHT", 1, -1)
+        row.iconBorder.edges = {}
+        for _, info in ipairs({
+            {"TOPLEFT", "TOPRIGHT", 0, 0, 0, -1},      -- top
+            {"BOTTOMLEFT", "BOTTOMRIGHT", 0, 1, 0, 0},  -- bottom
+            {"TOPLEFT", "BOTTOMLEFT", 0, 0, -1, 0},     -- left
+            {"TOPRIGHT", "BOTTOMRIGHT", 1, 0, 0, 0},     -- right
+        }) do
+            local edge = row.iconBorder:CreateTexture(nil, "OVERLAY")
+            edge:SetPoint(info[1], row.iconBorder, info[1], info[3], info[4])
+            edge:SetPoint(info[2], row.iconBorder, info[2], info[5], info[6])
+            if info[1] == "TOPLEFT" and info[2] == "TOPRIGHT" then edge:SetHeight(1)
+            elseif info[1] == "BOTTOMLEFT" and info[2] == "BOTTOMRIGHT" then edge:SetHeight(1)
+            else edge:SetWidth(1) end
+            edge:SetColorTexture(1, 1, 1, 1)
+            table.insert(row.iconBorder.edges, edge)
+        end
+        row.iconBorder:Hide()
 
         -- Item name
         row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        row.text:SetPoint("LEFT", row.icon, "RIGHT", 6, 0)
+        row.text:SetPoint("LEFT", row.icon, "RIGHT", 8, 0)
         row.text:SetPoint("RIGHT", row, "RIGHT", -40, 0)
         row.text:SetJustifyH("LEFT")
         row.text:SetWordWrap(false)
 
         -- Item level
         row.ilvl = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        row.ilvl:SetPoint("RIGHT", row, "RIGHT", -30, 0)
+        row.ilvl:SetPoint("RIGHT", row, "RIGHT", -26, 0)
         row.ilvl:SetTextColor(0.7, 0.7, 0.7)
 
         -- Section header text
         row.headerText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        row.headerText:SetPoint("LEFT", 0, 0)
+        row.headerText:SetPoint("LEFT", 0, -4)
         row.headerText:Hide()
 
-        -- Dismiss button (X)
-        row.dismissBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-        row.dismissBtn:SetSize(22, 22)
-        row.dismissBtn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-        row.dismissBtn:SetText("X")
+        -- Section header divider line
+        row.headerLine = row:CreateTexture(nil, "ARTWORK")
+        row.headerLine:SetHeight(1)
+        row.headerLine:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 2)
+        row.headerLine:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 2)
+        row.headerLine:SetColorTexture(0.6, 0.6, 0.6, 0.4)
+        row.headerLine:Hide()
+
+        -- Dismiss button (minimal styled X)
+        row.dismissBtn = CreateFrame("Button", nil, row)
+        row.dismissBtn:SetSize(18, 18)
+        row.dismissBtn:SetPoint("RIGHT", row, "RIGHT", -2, 0)
+        local dismissText = row.dismissBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        dismissText:SetPoint("CENTER", 0, 0)
+        dismissText:SetText("x")
+        dismissText:SetTextColor(0.5, 0.5, 0.5)
+        row.dismissBtn:SetScript("OnEnter", function(self)
+            dismissText:SetTextColor(1, 0.3, 0.3)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText("Dismiss")
+            GameTooltip:AddLine("Click: hide for this session", 1, 1, 1)
+            GameTooltip:AddLine("Shift+Click: permanently ignore", 1, 0.5, 0.5)
+            GameTooltip:Show()
+        end)
+        row.dismissBtn:SetScript("OnLeave", function()
+            dismissText:SetTextColor(0.5, 0.5, 0.5)
+            GameTooltip:Hide()
+        end)
 
         -- Click row to select item for disenchant
         row:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
