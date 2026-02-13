@@ -7,3 +7,4 @@
 ## SavedVariablesPerCharacter: CookieEasyEnchantDB
 
 CookieEasyEnchant.lua
+CookieEasyEnchant_Disenchant.lua

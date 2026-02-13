@@ -474,6 +474,10 @@ eventFrame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 eventFrame:SetScript("OnEvent", function(self, event, arg1, ...)
     if event == "ADDON_LOADED" and arg1 == addonName then
         CookieEasyEnchantDB = CookieEasyEnchantDB or {}
+        CookieEasyEnchantDB.deFilterUncommon = CookieEasyEnchantDB.deFilterUncommon ~= false  -- default true
+        CookieEasyEnchantDB.deFilterRare = CookieEasyEnchantDB.deFilterRare ~= false          -- default true
+        CookieEasyEnchantDB.deFilterEpic = CookieEasyEnchantDB.deFilterEpic ~= false          -- default true
+        CookieEasyEnchantDB.ignoredItems = CookieEasyEnchantDB.ignoredItems or {}
         SetupAutoConfirm()
         Print("Loaded! Panel appears when you open Enchanting.")
 
@@ -651,12 +655,18 @@ SlashCmdList["COOKIEENCHANT"] = function(msg)
     local cmd = string.lower(msg or "")
     if cmd == "macro" then
         CreateOrUpdateMacro()
+    elseif cmd == "de" or cmd == "disenchant" then
+        CookieEasyEnchant_ToggleDisenchant()
+    elseif cmd == "unignore" then
+        CookieEasyEnchant_ClearIgnoreList()
     else
         Print("Open Enchanting to use Easy Enchant!")
         Print("  1. Select an enchant in the list")
         Print("  2. Drag an item to the Easy Enchant panel")
         Print("  3. Spam-click the Enchant button!")
         Print("Type /cee macro to create a keybindable macro.")
+        Print("Type /cee de to open the Disenchant window.")
+        Print("Type /cee unignore to clear permanently ignored items.")
     end
 end
 

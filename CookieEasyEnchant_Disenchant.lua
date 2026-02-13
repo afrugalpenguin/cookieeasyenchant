@@ -1,0 +1,396 @@
+-- CookieEasyEnchant: Multi-Disenchant Module
+-- Standalone window for bulk disenchanting bag items
+
+local addonName, addon = ...
+
+-- Module state
+local deFrame           -- Main disenchant window frame
+local scrollFrame       -- Scroll frame for item list
+local itemRows = {}     -- Pool of visible row frames (each with a secure button)
+local scannedItems = {} -- Items found in bags after scanning
+local sessionDismissed = {} -- {["bag:slot"] = true} dismissed this session
+local NUM_VISIBLE_ROWS = 8
+
+-- Forward declarations
+local ScanBags, RefreshList, CreateDisenchantFrame
+
+--------------------------------------------------------------------------------
+-- Quality Filtering
+--------------------------------------------------------------------------------
+
+local QUALITY_UNCOMMON = 2  -- Green
+local QUALITY_RARE = 3      -- Blue
+local QUALITY_EPIC = 4      -- Purple
+
+local function QualityPassesFilter(quality)
+    if quality == QUALITY_UNCOMMON then return CookieEasyEnchantDB.deFilterUncommon end
+    if quality == QUALITY_RARE then return CookieEasyEnchantDB.deFilterRare end
+    if quality == QUALITY_EPIC then return CookieEasyEnchantDB.deFilterEpic end
+    return false
+end
+
+--------------------------------------------------------------------------------
+-- BoE / BoP Detection via Tooltip Scanning
+--------------------------------------------------------------------------------
+
+-- Create hidden tooltip once at module load
+local scanTooltip = CreateFrame("GameTooltip", "CEEDEScanTooltip", nil, "GameTooltipTemplate")
+scanTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+
+local function IsItemBoE(bag, slot)
+    scanTooltip:ClearLines()
+    scanTooltip:SetBagItem(bag, slot)
+    for i = 2, scanTooltip:NumLines() do
+        local text = _G["CEEDEScanTooltipTextLeft" .. i]
+        if text then
+            local line = text:GetText() or ""
+            if line == ITEM_BIND_ON_EQUIP then
+                return true
+            elseif line == ITEM_SOULBOUND or line == ITEM_BIND_ON_PICKUP then
+                return false
+            end
+        end
+    end
+    return false  -- default to BoP if unclear
+end
+
+--------------------------------------------------------------------------------
+-- Bag Scanning
+--------------------------------------------------------------------------------
+
+ScanBags = function()
+    scannedItems = {}
+    for bag = 0, NUM_BAG_SLOTS do
+        for slot = 1, C_Container.GetContainerNumSlots(bag) do
+            local itemID = C_Container.GetContainerItemID(bag, slot)
+            if itemID and not CookieEasyEnchantDB.ignoredItems[itemID]
+               and not sessionDismissed[bag .. ":" .. slot] then
+                local info = C_Container.GetContainerItemInfo(bag, slot)
+                if info then
+                    local itemName, itemLink, quality, itemLevel = C_Item.GetItemInfo(info.hyperlink)
+                    if quality and QualityPassesFilter(quality) then
+                        local isBoE = IsItemBoE(bag, slot)
+                        table.insert(scannedItems, {
+                            bag = bag,
+                            slot = slot,
+                            itemID = itemID,
+                            name = itemName or "Unknown",
+                            link = info.hyperlink,
+                            icon = info.iconFileID,
+                            quality = quality,
+                            itemLevel = itemLevel or 0,
+                            isBoE = isBoE,
+                        })
+                    end
+                end
+            end
+        end
+    end
+
+    -- Sort: BoP first, then BoE; within each group sort by item level
+    table.sort(scannedItems, function(a, b)
+        if a.isBoE ~= b.isBoE then
+            return not a.isBoE  -- BoP (false) before BoE (true)
+        end
+        return a.itemLevel < b.itemLevel
+    end)
+end
+
+--------------------------------------------------------------------------------
+-- Display List (with section headers)
+--------------------------------------------------------------------------------
+
+local function BuildDisplayList()
+    local display = {}
+    local hasBoP, hasBoE = false, false
+
+    for _, item in ipairs(scannedItems) do
+        if item.isBoE then hasBoE = true else hasBoP = true end
+    end
+
+    -- BoP section
+    if hasBoP then
+        table.insert(display, { isHeader = true, headerText = "Bind on Pickup" })
+        for _, item in ipairs(scannedItems) do
+            if not item.isBoE then
+                table.insert(display, item)
+            end
+        end
+    end
+
+    -- BoE section
+    if hasBoE then
+        table.insert(display, { isHeader = true, headerText = "Bind on Equip" })
+        for _, item in ipairs(scannedItems) do
+            if item.isBoE then
+                table.insert(display, item)
+            end
+        end
+    end
+
+    return display
+end
+
+--------------------------------------------------------------------------------
+-- Refresh List (populate visible rows from scannedItems)
+--------------------------------------------------------------------------------
+
+RefreshList = function()
+    local displayList = BuildDisplayList()
+    local offset = FauxScrollFrame_GetOffset(scrollFrame)
+    FauxScrollFrame_Update(scrollFrame, #displayList, NUM_VISIBLE_ROWS, 36)
+
+    for i = 1, NUM_VISIBLE_ROWS do
+        local row = itemRows[i]
+        local idx = offset + i
+        local entry = displayList[idx]
+
+        if entry and entry.isHeader then
+            -- Show as section header
+            row.icon:Hide()
+            row.text:Hide()
+            row.ilvl:Hide()
+            row.deButton:Hide()
+            row.dismissBtn:Hide()
+            row.headerText:SetText(entry.headerText)
+            row.headerText:Show()
+            row.itemLink = nil
+            row:Show()
+
+        elseif entry then
+            -- Show as item row
+            row.headerText:Hide()
+            row.icon:SetTexture(entry.icon)
+            row.icon:Show()
+
+            local qualityColor = ITEM_QUALITY_COLORS[entry.quality] or ITEM_QUALITY_COLORS[1]
+            row.text:SetText(entry.name)
+            row.text:SetTextColor(qualityColor.r, qualityColor.g, qualityColor.b)
+            row.text:Show()
+
+            row.ilvl:SetText("i" .. entry.itemLevel)
+            row.ilvl:Show()
+
+            row.itemLink = entry.link
+
+            -- Set up secure DE button macro (only outside combat)
+            if not InCombatLockdown() then
+                local macroText = string.format("/cast Disenchant\n/use %d %d", entry.bag, entry.slot)
+                row.deButton:SetAttribute("macrotext", macroText)
+            end
+            row.deButton:Show()
+
+            -- Dismiss button handlers
+            row.dismissBtn:SetScript("OnClick", function(self, button)
+                if IsShiftKeyDown() then
+                    -- Permanent ignore by item ID
+                    CookieEasyEnchantDB.ignoredItems[entry.itemID] = true
+                    DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00CookieEasyEnchant:|r Permanently ignored " .. (entry.link or entry.name))
+                else
+                    -- Session dismiss by bag:slot
+                    sessionDismissed[entry.bag .. ":" .. entry.slot] = true
+                end
+                ScanBags()
+                RefreshList()
+            end)
+            row.dismissBtn:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText("Dismiss")
+                GameTooltip:AddLine("Click: hide for this session", 1, 1, 1)
+                GameTooltip:AddLine("Shift+Click: permanently ignore", 1, 0.5, 0.5)
+                GameTooltip:Show()
+            end)
+            row.dismissBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            row.dismissBtn:Show()
+
+            row:Show()
+        else
+            row:Hide()
+        end
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Create the Disenchant Window UI
+--------------------------------------------------------------------------------
+
+CreateDisenchantFrame = function()
+    if deFrame then return deFrame end
+
+    -- Main window
+    deFrame = CreateFrame("Frame", "CookieEasyEnchantDEFrame", UIParent, "BackdropTemplate")
+    deFrame:SetSize(320, 400)
+    deFrame:SetPoint("CENTER")
+    deFrame:SetMovable(true)
+    deFrame:EnableMouse(true)
+    deFrame:RegisterForDrag("LeftButton")
+    deFrame:SetScript("OnDragStart", deFrame.StartMoving)
+    deFrame:SetScript("OnDragStop", deFrame.StopMovingOrSizing)
+    deFrame:SetFrameStrata("DIALOG")
+    deFrame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 }
+    })
+
+    -- Title
+    local title = deFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOP", 0, -12)
+    title:SetText("Disenchant")
+
+    -- Close button
+    local closeBtn = CreateFrame("Button", nil, deFrame, "UIPanelCloseButton")
+    closeBtn:SetPoint("TOPRIGHT", -2, -2)
+
+    -- Refresh button
+    local refreshBtn = CreateFrame("Button", nil, deFrame, "UIPanelButtonTemplate")
+    refreshBtn:SetSize(70, 22)
+    refreshBtn:SetPoint("TOPLEFT", 12, -10)
+    refreshBtn:SetText("Refresh")
+    refreshBtn:SetScript("OnClick", function()
+        ScanBags()
+        RefreshList()
+    end)
+
+    tinsert(UISpecialFrames, "CookieEasyEnchantDEFrame")
+
+    -- Quality filter checkboxes
+    local filterY = -36
+    local filters = {
+        { key = "deFilterUncommon", label = "Uncommon", color = {0, 0.8, 0} },
+        { key = "deFilterRare",     label = "Rare",     color = {0, 0.44, 0.87} },
+        { key = "deFilterEpic",     label = "Epic",     color = {0.64, 0.21, 0.93} },
+    }
+
+    for i, f in ipairs(filters) do
+        local btn = CreateFrame("CheckButton", nil, deFrame, "UICheckButtonTemplate")
+        btn:SetSize(24, 24)
+        btn:SetPoint("TOPLEFT", 12 + (i - 1) * 100, filterY)
+        btn:SetChecked(CookieEasyEnchantDB[f.key])
+        btn:SetScript("OnClick", function(self)
+            CookieEasyEnchantDB[f.key] = self:GetChecked()
+            ScanBags()
+            RefreshList()
+        end)
+        local label = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        label:SetPoint("LEFT", btn, "RIGHT", 0, 0)
+        label:SetText(f.label)
+        label:SetTextColor(unpack(f.color))
+    end
+
+    -- Scroll frame and row pool
+    local listTop = -62
+
+    scrollFrame = CreateFrame("ScrollFrame", "CookieEasyEnchantDEScroll", deFrame, "FauxScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", 8, listTop)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -28, 10)
+    scrollFrame:SetScript("OnVerticalScroll", function(self, offset)
+        FauxScrollFrame_OnVerticalScroll(self, offset, 36, function() RefreshList() end)
+    end)
+
+    -- Create row pool
+    for i = 1, NUM_VISIBLE_ROWS do
+        local row = CreateFrame("Frame", nil, deFrame)
+        row:SetSize(270, 34)
+        row:SetPoint("TOPLEFT", 12, listTop - 2 + (i - 1) * -36)
+
+        -- Item icon
+        row.icon = row:CreateTexture(nil, "ARTWORK")
+        row.icon:SetSize(32, 32)
+        row.icon:SetPoint("LEFT", 0, 0)
+
+        -- Item name (colored by quality)
+        row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        row.text:SetPoint("LEFT", row.icon, "RIGHT", 6, 0)
+        row.text:SetPoint("RIGHT", row, "RIGHT", -70, 0)
+        row.text:SetJustifyH("LEFT")
+        row.text:SetWordWrap(false)
+
+        -- Item level
+        row.ilvl = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.ilvl:SetPoint("RIGHT", row, "RIGHT", -60, 0)
+        row.ilvl:SetTextColor(0.7, 0.7, 0.7)
+
+        -- Section header text (reused when row is a header)
+        row.headerText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.headerText:SetPoint("LEFT", 0, 0)
+        row.headerText:Hide()
+
+        -- Disenchant secure button
+        row.deButton = CreateFrame("Button", "CookieEasyEnchantDEBtn" .. i, row, "SecureActionButtonTemplate, UIPanelButtonTemplate")
+        row.deButton:SetSize(40, 22)
+        row.deButton:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+        row.deButton:SetText("DE")
+        row.deButton:SetAttribute("type", "macro")
+        row.deButton:SetAttribute("macrotext", "")
+        row.deButton:RegisterForClicks("LeftButtonUp")
+
+        -- Dismiss button (X)
+        row.dismissBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+        row.dismissBtn:SetSize(22, 22)
+        row.dismissBtn:SetPoint("RIGHT", row.deButton, "LEFT", -2, 0)
+        row.dismissBtn:SetText("X")
+
+        -- Tooltip on icon hover
+        row:EnableMouse(true)
+        row:SetScript("OnEnter", function(self)
+            if self.itemLink then
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetHyperlink(self.itemLink)
+                GameTooltip:Show()
+            end
+        end)
+        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+        itemRows[i] = row
+    end
+
+    return deFrame
+end
+
+--------------------------------------------------------------------------------
+-- Public API (called from slash commands)
+--------------------------------------------------------------------------------
+
+function CookieEasyEnchant_ToggleDisenchant()
+    local frame = CreateDisenchantFrame()
+    if frame:IsShown() then
+        frame:Hide()
+    else
+        ScanBags()
+        RefreshList()
+        frame:Show()
+    end
+end
+
+function CookieEasyEnchant_ClearIgnoreList()
+    local count = 0
+    for _ in pairs(CookieEasyEnchantDB.ignoredItems or {}) do
+        count = count + 1
+    end
+    CookieEasyEnchantDB.ignoredItems = {}
+    DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00CookieEasyEnchant:|r Cleared " .. count .. " ignored item(s).")
+    if deFrame and deFrame:IsShown() then
+        ScanBags()
+        RefreshList()
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Event Handling: BAG_UPDATE auto-refresh and combat lockdown safety
+--------------------------------------------------------------------------------
+
+local deEventFrame = CreateFrame("Frame")
+deEventFrame:RegisterEvent("BAG_UPDATE")
+deEventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+deEventFrame:SetScript("OnEvent", function(self, event)
+    if event == "BAG_UPDATE" and deFrame and deFrame:IsShown() then
+        C_Timer.After(0.1, function()
+            ScanBags()
+            RefreshList()
+        end)
+    elseif event == "PLAYER_REGEN_ENABLED" and deFrame and deFrame:IsShown() then
+        RefreshList()  -- Update secure button macros now that combat is over
+    end
+end)
