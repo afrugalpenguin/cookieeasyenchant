@@ -286,10 +286,10 @@ local function SetPanelCollapsed(collapsed)
     CookieEasyEnchantDB.collapsed = collapsed
     if collapsed then
         if easyEnchantFrame then easyEnchantFrame:Hide() end
-        if toggleButton then toggleButton:SetText(">") end
+        if toggleButton and not IsSkilletActive() then toggleButton:SetText(">") end
     else
         if easyEnchantFrame then easyEnchantFrame:Show() end
-        if toggleButton then toggleButton:SetText("<") end
+        if toggleButton and not IsSkilletActive() then toggleButton:SetText("<") end
     end
 end
 
@@ -310,10 +310,13 @@ local function PositionPanelForParent(parentFrame)
     easyEnchantFrame:ClearAllPoints()
 
     if parentFrame == SkilletFrame then
-        -- Skillet's frame is wider; position toggle near its top-right
-        toggleButton:SetPoint("TOPRIGHT", parentFrame, "TOPRIGHT", -35, -18)
-        easyEnchantFrame:SetPoint("TOPLEFT", parentFrame, "TOPRIGHT", -40, 0)
+        -- Anchor toggle in the Skillet title bar, left of the close button
+        toggleButton:SetSize(40, 22)
+        toggleButton:SetText("CEE")
+        toggleButton:SetPoint("RIGHT", SkilletShowOptionsButton, "LEFT", -2, 0)
+        easyEnchantFrame:SetPoint("TOPLEFT", parentFrame, "TOPRIGHT", 0, -32)
     else
+        toggleButton:SetSize(24, 22)
         -- Default CraftFrame positioning
         toggleButton:SetPoint("TOPRIGHT", parentFrame, "TOPRIGHT", -35, -50)
         easyEnchantFrame:SetPoint("TOPLEFT", parentFrame, "TOPRIGHT", -40, -32)
@@ -708,7 +711,7 @@ SlashCmdList["COOKIEENCHANT"] = function(msg)
         CookieEasyEnchant_ToggleDisenchant()
     elseif cmd == "unignore" then
         CookieEasyEnchant_ClearIgnoreList()
-    else
+    elseif cmd == "help" then
         Print("Open Enchanting to use Easy Enchant!")
         Print("  1. Select an enchant in the list")
         Print("  2. Drag an item to the Easy Enchant panel")
@@ -716,6 +719,9 @@ SlashCmdList["COOKIEENCHANT"] = function(msg)
         Print("Type /cee macro to create a keybindable macro.")
         Print("Type /cee de to open the Disenchant window.")
         Print("Type /cee unignore to clear permanently ignored items.")
+    else
+        -- Open enchanting window (Skillet will intercept if installed)
+        CastSpellByName("Enchanting")
     end
 end
 
