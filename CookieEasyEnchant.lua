@@ -13,7 +13,6 @@ local itemButton
 local toggleButton
 local contentFrame
 local selectedItem = nil  -- {bag, slot, name, link, icon, itemID}
-local usingAddonEnchant = false  -- Flag to track if user clicked our Enchant button
 
 -- Forward declarations
 local UpdateEnchantButtonMacro
@@ -459,7 +458,6 @@ local function CreateEasyEnchantPanel()
 
     enchantButton:SetScript("PreClick", function(self, mouseButton)
         UpdateEnchantButtonMacro()
-        usingAddonEnchant = true  -- Flag that we're using our addon's enchant
     end)
 
     -- Make the button available for WoW's click binding system
@@ -480,24 +478,9 @@ end
 --------------------------------------------------------------------------------
 
 local function SetupAutoConfirm()
-    hooksecurefunc("StaticPopup_Show", function(which, text_arg1, text_arg2, data)
-        -- Only auto-confirm if user is using our addon's enchant button
-        if which == "REPLACE_ENCHANT" and usingAddonEnchant then
-            C_Timer.After(0.05, function()
-                for i = 1, 4 do
-                    local popup = _G["StaticPopup" .. i]
-                    if popup and popup:IsShown() and popup.which == "REPLACE_ENCHANT" then
-                        local button = _G["StaticPopup" .. i .. "Button1"]
-                        if button and button:IsShown() and button:IsEnabled() then
-                            button:Click()
-                        end
-                        break
-                    end
-                end
-                usingAddonEnchant = false  -- Reset flag after handling
-            end)
-        end
-    end)
+    -- Note: We do NOT auto-confirm REPLACE_ENCHANT because ReplaceEnchant()
+    -- is a protected function that requires a hardware click event.
+    -- The user must manually click "Accept" on the replace enchant dialog.
 
     -- Hook SelectCraft to update macro when user selects a different enchant
     if SelectCraft then
