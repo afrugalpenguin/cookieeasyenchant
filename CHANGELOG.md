@@ -1,5 +1,9 @@
 # Changelog
 
+**v3.2.1**
+
+- Fixed CEE toggle button positioning in Skillet — now sits inside the button row alongside Ignored List, Queues, and Notes
+
 **v3.2.0**
 
 - Added Skillet-Classic integration — Easy Enchant panel attaches to SkilletFrame when Skillet is managing the craft window
