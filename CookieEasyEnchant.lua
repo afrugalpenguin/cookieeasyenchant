@@ -310,10 +310,11 @@ local function PositionPanelForParent(parentFrame)
     easyEnchantFrame:ClearAllPoints()
 
     if parentFrame == SkilletFrame then
-        -- Anchor toggle in the Skillet title bar, left of the close button
-        toggleButton:SetSize(40, 22)
+        -- Anchor toggle inside the Skillet button row, at the right edge
+        toggleButton:SetSize(40, 20)
         toggleButton:SetText("CEE")
-        toggleButton:SetPoint("RIGHT", SkilletShowOptionsButton, "LEFT", -2, 0)
+        toggleButton:SetPoint("RIGHT", parentFrame, "RIGHT", -10, 0)
+        toggleButton:SetPoint("TOP", SkilletIgnoreListButton, "TOP", 0, 0)
         easyEnchantFrame:SetPoint("TOPLEFT", parentFrame, "TOPRIGHT", 0, -32)
     else
         toggleButton:SetSize(24, 22)
