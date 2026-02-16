@@ -19,6 +19,18 @@ local usingAddonEnchant = false  -- Flag to track if user clicked our Enchant bu
 local UpdateEnchantButtonMacro
 local UpdateMacroText
 
+-- Skillet-Classic integration: detect if Skillet is managing the craft window
+local function IsSkilletActive()
+    return Skillet and SkilletFrame and SkilletFrame:IsShown()
+end
+
+local function GetCraftParentFrame()
+    if IsSkilletActive() then
+        return SkilletFrame
+    end
+    return CraftFrame
+end
+
 -- Create the secure button immediately at load time so keybindings work
 -- It will be reparented and positioned when the CraftFrame opens
 enchantButton = CreateFrame("Button", "CookieEasyEnchantButton", UIParent, "SecureActionButtonTemplate, UIPanelButtonTemplate")
@@ -209,7 +221,12 @@ local function ValidateEnchantReady()
     if not selectedItem then
         return false, nil
     end
-    if not CraftFrame or not CraftFrame:IsShown() then
+    -- Check that the enchanting window is open (either Blizzard's or Skillet's)
+    if IsSkilletActive() then
+        if not Skillet.isCraft then
+            return false, nil
+        end
+    elseif not CraftFrame or not CraftFrame:IsShown() then
         return false, nil
     end
     -- Check if item is still in the same location
@@ -281,16 +298,44 @@ local function TogglePanel()
 end
 
 --------------------------------------------------------------------------------
--- Create the Easy Enchant Panel (attached to CraftFrame)
+-- Panel Positioning (adapts to Skillet or default CraftFrame)
+--------------------------------------------------------------------------------
+
+local function PositionPanelForParent(parentFrame)
+    if not toggleButton or not easyEnchantFrame then return end
+
+    toggleButton:SetParent(parentFrame)
+    toggleButton:ClearAllPoints()
+    easyEnchantFrame:SetParent(parentFrame)
+    easyEnchantFrame:ClearAllPoints()
+
+    if parentFrame == SkilletFrame then
+        -- Skillet's frame is wider; position toggle near its top-right
+        toggleButton:SetPoint("TOPRIGHT", parentFrame, "TOPRIGHT", -35, -18)
+        easyEnchantFrame:SetPoint("TOPLEFT", parentFrame, "TOPRIGHT", -40, 0)
+    else
+        -- Default CraftFrame positioning
+        toggleButton:SetPoint("TOPRIGHT", parentFrame, "TOPRIGHT", -35, -50)
+        easyEnchantFrame:SetPoint("TOPLEFT", parentFrame, "TOPRIGHT", -40, -32)
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Create the Easy Enchant Panel (attached to craft window)
 --------------------------------------------------------------------------------
 
 local function CreateEasyEnchantPanel()
-    if easyEnchantFrame then return easyEnchantFrame end
+    local parentFrame = GetCraftParentFrame()
 
-    -- Toggle tab button - positioned right under the X button of CraftFrame
-    toggleButton = CreateFrame("Button", "CookieEasyEnchantToggle", CraftFrame, "UIPanelButtonTemplate")
+    -- If panel already exists, just reparent and reposition
+    if easyEnchantFrame then
+        PositionPanelForParent(parentFrame)
+        return easyEnchantFrame
+    end
+
+    -- Toggle tab button
+    toggleButton = CreateFrame("Button", "CookieEasyEnchantToggle", parentFrame, "UIPanelButtonTemplate")
     toggleButton:SetSize(24, 22)
-    toggleButton:SetPoint("TOPRIGHT", CraftFrame, "TOPRIGHT", -35, -50)
     toggleButton:SetFrameStrata("HIGH")
     toggleButton:SetFrameLevel(100)
     toggleButton:SetText("<")
@@ -303,11 +348,13 @@ local function CreateEasyEnchantPanel()
     end)
     toggleButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    -- Main panel frame - flush against the CraftFrame edge
-    easyEnchantFrame = CreateFrame("Frame", "CookieEasyEnchantFrame", CraftFrame, "BackdropTemplate")
+    -- Main panel frame
+    easyEnchantFrame = CreateFrame("Frame", "CookieEasyEnchantFrame", parentFrame, "BackdropTemplate")
     easyEnchantFrame:SetSize(170, 110)
-    easyEnchantFrame:SetPoint("TOPLEFT", CraftFrame, "TOPRIGHT", -40, -32)
     easyEnchantFrame:SetFrameStrata("HIGH")
+
+    -- Set initial position based on parent
+    PositionPanelForParent(parentFrame)
 
     -- Dark background like the enchanting window
     easyEnchantFrame:SetBackdrop({
@@ -482,8 +529,10 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, ...)
         Print("Loaded! Panel appears when you open Enchanting.")
 
     elseif event == "CRAFT_SHOW" then
-        -- CraftFrame is now available, create our panel attached to it
-        C_Timer.After(0.1, function()
+        -- CraftFrame is now available, create our panel
+        -- Skillet needs a longer delay to finish setting up SkilletFrame
+        local delay = Skillet and 0.3 or 0.1
+        C_Timer.After(delay, function()
             CreateEasyEnchantPanel()
 
             -- Restore item selection if valid
@@ -671,7 +720,7 @@ SlashCmdList["COOKIEENCHANT"] = function(msg)
 end
 
 function CookieEasyEnchant_Toggle()
-    if CraftFrame and CraftFrame:IsShown() then
+    if IsSkilletActive() or (CraftFrame and CraftFrame:IsShown()) then
         TogglePanel()
     end
 end
