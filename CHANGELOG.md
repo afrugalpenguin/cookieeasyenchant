@@ -1,5 +1,9 @@
 # Changelog
 
+**v3.2.2**
+
+- Fixed `/cee de` not showing items on first use (item data now pre-cached before scanning)
+
 **v3.2.1**
 
 - Fixed CEE toggle button positioning in Skillet — now sits inside the button row alongside Ignored List, Queues, and Notes
