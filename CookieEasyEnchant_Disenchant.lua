@@ -663,10 +663,34 @@ function CookieEasyEnchant_ToggleDisenchant()
         frame:Hide()
     else
         selectedDE = nil
-        ScanBags()
-        UpdateDEButton()
-        RefreshList()
-        frame:Show()
+        -- Pre-cache item data: GetItemInfo returns nil for uncached items on first call.
+        -- Request all items now, then scan after a short delay to let the cache populate.
+        local needsDelay = false
+        for bag = 0, NUM_BAG_SLOTS do
+            for slot = 1, C_Container.GetContainerNumSlots(bag) do
+                local info = C_Container.GetContainerItemInfo(bag, slot)
+                if info and info.hyperlink then
+                    local itemName = GetItemInfo(info.hyperlink)
+                    if not itemName then
+                        needsDelay = true
+                    end
+                end
+            end
+        end
+        if needsDelay then
+            -- Show frame immediately, scan after cache populates
+            frame:Show()
+            C_Timer.After(0.5, function()
+                ScanBags()
+                UpdateDEButton()
+                RefreshList()
+            end)
+        else
+            ScanBags()
+            UpdateDEButton()
+            RefreshList()
+            frame:Show()
+        end
     end
 end
 
