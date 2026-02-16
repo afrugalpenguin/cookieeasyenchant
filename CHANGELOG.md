@@ -1,5 +1,9 @@
 # Changelog
 
+**v3.2.3**
+
+- Fixed ADDON_ACTION_FORBIDDEN error when enchanting items that already have an enchant (Replace Enchant dialog must now be confirmed manually)
+
 **v3.2.2**
 
 - Fixed `/cee de` not showing items on first use (item data now pre-cached before scanning)
