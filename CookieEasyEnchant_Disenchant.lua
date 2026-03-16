@@ -253,6 +253,17 @@ end
 --------------------------------------------------------------------------------
 
 ScanBags = function()
+    -- Remember index of currently selected item for auto-advance
+    local prevSelectedIndex
+    if selectedDE then
+        for i, item in ipairs(scannedItems) do
+            if item.bag == selectedDE.bag and item.slot == selectedDE.slot then
+                prevSelectedIndex = i
+                break
+            end
+        end
+    end
+
     scannedItems = {}
     for bag = 0, NUM_BAG_SLOTS do
         for slot = 1, C_Container.GetContainerNumSlots(bag) do
@@ -301,7 +312,13 @@ ScanBags = function()
             end
         end
         if not found then
-            selectedDE = nil
+            -- Auto-advance: select the item at the same position (or last item)
+            if prevSelectedIndex and #scannedItems > 0 then
+                local newIndex = math.min(prevSelectedIndex, #scannedItems)
+                selectedDE = scannedItems[newIndex]
+            else
+                selectedDE = nil
+            end
             UpdateDEButton()
         end
     end
