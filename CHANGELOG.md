@@ -1,5 +1,10 @@
 # Changelog
 
+**v3.3.0**
+
+- After disenchanting an item, the selection now auto-advances to the next item in the list — just keep clicking "Disenchant" to chew through your bag without re-selecting each time
+- **Note:** The list will move to the next item automatically and allow you to disenchant it immediately, so watch your clicks if you want to skip something!
+
 **v3.2.3**
 
 - Fixed ADDON_ACTION_FORBIDDEN error when enchanting items that already have an enchant (Replace Enchant dialog must now be confirmed manually)
